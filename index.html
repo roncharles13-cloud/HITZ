@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>NHL HITZ — Arcade Hockey</title>
+  <link rel="stylesheet" href="css/style.css">
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+      "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+    }
+  }
+  </script>
+</head>
+<body>
+
+<!-- 3D Canvas -->
+<canvas id="game-canvas"></canvas>
+<!-- Bitmap font overlay (disc-ripped Arial_16) -->
+<canvas id="font-overlay" style="position:fixed;inset:0;width:100%;height:100%;pointer-events:none;z-index:9;"></canvas>
+
+<!-- HUD Overlay -->
+<div id="hud" style="display:none;">
+
+  <!-- Scoreboard -->
+  <div id="score-bar">
+    <div class="team-score-block" id="score-block-left">
+      <div class="team-abbr" id="team-abbr-left">COL</div>
+      <div class="team-score" id="score-left">0</div>
+      <div class="team-shots" id="shots-left">SOG 0</div>
+    </div>
+    <div id="clock-block">
+      <div id="period-label">PERIOD 1</div>
+      <div id="clock">2:00</div>
+    </div>
+    <div class="team-score-block" id="score-block-right">
+      <div class="team-abbr" id="team-abbr-right">DET</div>
+      <div class="team-score" id="score-right">0</div>
+      <div class="team-shots" id="shots-right">SOG 0</div>
+    </div>
+  </div>
+
+  <!-- Faceoff banner -->
+  <div id="faceoff-banner"><span>FACE-OFF</span></div>
+
+  <!-- Fire meters -->
+  <div id="fire-label-left">🔥 ON FIRE</div>
+  <div id="fire-bar-left"><div class="fire-fill" id="fire-fill-left"></div></div>
+  <div id="fire-label-right">ON FIRE 🔥</div>
+  <div id="fire-bar-right"><div class="fire-fill" id="fire-fill-right"></div></div>
+
+  <!-- Turbo meter (human player) -->
+  <div id="turbo-wrap">
+    <div id="turbo-label">TURBO</div>
+    <div id="turbo-bar"><div id="turbo-fill"></div></div>
+  </div>
+
+  <!-- Shot power meter (fills while holding shoot) -->
+  <div id="shotpower-wrap">
+    <div id="shotpower-bar"><div id="shotpower-fill"></div></div>
+    <div id="shotpower-label">SHOT POWER</div>
+  </div>
+
+  <!-- Goal Flash -->
+  <div id="goal-flash">
+    <div id="goal-text">GOAL!</div>
+    <div id="goal-scorer"></div>
+  </div>
+
+  <!-- controls hint rendered via bitmap font onto #font-overlay -->
+
+</div>
+
+<!-- Pause -->
+<div id="pause" class="hidden">
+  <div class="pause-title">PAUSED</div>
+  <button class="menu-btn" id="resume-btn">RESUME</button>
+  <button class="menu-btn" id="pause-settings-btn">SETTINGS</button>
+  <button class="menu-btn" id="quit-btn">QUIT TO MENU</button>
+</div>
+
+<!-- Main Menu -->
+<div id="menu">
+  <img id="menu-logo" src="assets/logo.png" alt="NHL HITZ">
+  <div id="menu-sub">ARCADE HOCKEY &nbsp;·&nbsp; 2003 PROTOTYPE REMAKE</div>
+  <button class="menu-btn" id="play-btn">PLAY GAME</button>
+  <button class="menu-btn" id="settings-btn">SETTINGS</button>
+  <button class="menu-btn" id="shootout-btn" style="opacity:0.5;cursor:not-allowed;" disabled>SHOOTOUT <small style="font-size:12px;">(COMING SOON)</small></button>
+</div>
+
+<!-- Settings -->
+<div id="settings" class="hidden">
+  <h2 class="settings-title">SETTINGS</h2>
+  <div class="settings-body">
+    <div class="set-row">
+      <span class="set-label">FIELD OF VIEW</span>
+      <input id="fov-slider" type="range" min="35" max="95" step="1">
+      <span id="fov-val" class="set-val">50</span>
+    </div>
+    <div class="set-row">
+      <span class="set-label">VOLUME</span>
+      <input id="vol-slider" type="range" min="0" max="100" step="1">
+      <span id="vol-val" class="set-val">70</span>
+    </div>
+    <div class="set-row">
+      <span class="set-label">MUTE</span>
+      <label class="set-toggle"><input id="mute-toggle" type="checkbox"><span></span></label>
+    </div>
+    <div class="set-section">CONTROLS <small>click a binding, then press any key or mouse button</small></div>
+    <div id="keybind-list"></div>
+  </div>
+  <div class="set-actions">
+    <button id="reset-binds-btn">RESET DEFAULTS</button>
+    <button id="settings-back-btn">← BACK</button>
+  </div>
+</div>
+
+<!-- Trivia Intermission Screen -->
+<div id="trivia-screen" class="hidden">
+  <div id="trivia-period-banner">END OF PERIOD 1</div>
+  <div id="trivia-score-line"></div>
+  <div id="trivia-question"></div>
+  <div id="trivia-answers"></div>
+  <div id="trivia-timer-wrap"><div id="trivia-timer-fill"></div></div>
+  <div id="trivia-result"></div>
+</div>
+
+<!-- Match Summary -->
+<div id="summary-screen" class="hidden">
+  <div id="summary-title">FINAL</div>
+  <div id="summary-score"></div>
+  <div id="summary-tables"></div>
+  <div id="summary-pog"></div>
+  <button id="summary-continue-btn">CONTINUE</button>
+</div>
+
+<!-- Team Select -->
+<div id="team-select" class="hidden">
+
+  <div id="vs-topbar">
+    <div id="vs-title">TEAM SELECT</div>
+  </div>
+
+  <div id="vs-stage">
+    <div class="vs-panel" id="vs-panel-0">
+      <div class="vs-badge-wrap"><div class="vs-badge" id="vs-badge-0"></div></div>
+      <div class="vs-info">
+        <div class="vs-cityline"><span class="vs-city" id="vs-city-0"></span><span class="vs-ovr" id="vs-ovr-0"></span></div>
+        <div class="vs-nickname" id="vs-nick-0"></div>
+      </div>
+    </div>
+
+    <div id="vs-selector">
+      <div id="vs-tabs">
+        <button class="vs-tab" data-side="0">HOME</button>
+        <button class="vs-tab" data-side="1">AWAY</button>
+      </div>
+      <button id="vs-up" class="vs-arrow" aria-label="Previous team">▲</button>
+      <div id="vs-vs-label">VS</div>
+      <button id="vs-down" class="vs-arrow" aria-label="Next team">▼</button>
+      <button id="vs-random" title="Random team">🎲</button>
+    </div>
+
+    <div class="vs-panel" id="vs-panel-1">
+      <div class="vs-badge-wrap"><div class="vs-badge" id="vs-badge-1"></div></div>
+      <div class="vs-info">
+        <div class="vs-cityline"><span class="vs-ovr" id="vs-ovr-1"></span><span class="vs-city" id="vs-city-1"></span></div>
+        <div class="vs-nickname" id="vs-nick-1"></div>
+      </div>
+    </div>
+  </div>
+
+  <div id="vs-hint-bar">↑ ↓ / SCROLL / SWIPE TO CYCLE &nbsp;·&nbsp; CLICK A SIDE TO SWITCH IT &nbsp;·&nbsp; 🎲 RANDOM TEAM</div>
+
+  <div id="diff-row">
+    <div id="diff-label">DIFFICULTY</div>
+    <div id="diff-cards">
+      <button class="diff-btn" data-diff="easy">
+        <span class="diff-name">EASY</span>
+        <span class="diff-desc">Skate the ice, learn the moves</span>
+      </button>
+      <button class="diff-btn" data-diff="medium">
+        <span class="diff-name">MEDIUM</span>
+        <span class="diff-desc">Real defense, sharper goaltending</span>
+      </button>
+      <button class="diff-btn" data-diff="hard">
+        <span class="diff-name">HARD</span>
+        <span class="diff-desc">Tournament-grade AI, no mercy</span>
+      </button>
+    </div>
+  </div>
+
+  <button id="start-game-btn">START GAME</button>
+  <button id="back-btn">← BACK</button>
+</div>
+
+<script type="module" src="js/main.js"></script>
+</body>
+</html>

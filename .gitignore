@@ -1,0 +1,14 @@
+# Raw Xbox disc extraction — 1.3GB, never loaded by the game, not distributable
+disc/
+
+# Disc-ripped FMV movies — 387MB, unreferenced by the game, Mocap.avi exceeds GitHub's 100MB limit
+assets/movies/
+
+# Agent/studio tooling — not part of the game
+.claude/
+
+# Local server logs
+*.log
+
+# Disc-extraction tooling (Windows binaries) - not part of the game
+tools/
