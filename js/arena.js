@@ -340,7 +340,11 @@ export function buildArena(scene, renderer) {
   scene.add(new THREE.HemisphereLight('#eaf2ff', '#141d2e', 1.05));
   const key = new THREE.DirectionalLight('#ffffff', 1.85);
   key.position.set(40, 120, 60); key.castShadow = true;
-  key.shadow.mapSize.set(2048, 2048);
+  // 1024 (was 2048) — the shadow pass re-renders every frame while play moves,
+  // so its size is a sustained per-frame cost, not a one-time setup cost.
+  // Halving it cuts that cost 4x for a loss that's hard to see from the
+  // broadcast-distance camera this game is always viewed from.
+  key.shadow.mapSize.set(1024, 1024);
   key.shadow.camera.near = 10; key.shadow.camera.far = 420;
   key.shadow.camera.left = -120; key.shadow.camera.right = 120;
   key.shadow.camera.top = 70; key.shadow.camera.bottom = -70;

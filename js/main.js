@@ -30,8 +30,13 @@ const canvas = document.getElementById('game-canvas');
 const W = () => Math.max(window.innerWidth,  document.documentElement.clientWidth,  800);
 const H = () => Math.max(window.innerHeight, document.documentElement.clientHeight, 600);
 
-const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
-const MAX_PR = Math.min(window.devicePixelRatio, 1.75);
+// antialias:false — MSAA is one of the most expensive fixed GPU costs on
+// integrated graphics (common on the laptops this ships to via GitHub Pages)
+// and can't be toggled after construction, so the adaptive system below has
+// no way to claw it back once the renderer exists. The broadcast-distance
+// camera hides the jaggies well enough that this is worth it for compatibility.
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: false, powerPreference: 'high-performance' });
+const MAX_PR = Math.min(window.devicePixelRatio, 1.5);
 let curPR = MAX_PR;
 renderer.setPixelRatio(curPR);
 renderer.setSize(W(), H());
@@ -41,20 +46,37 @@ renderer.outputColorSpace = THREE.SRGBColorSpace;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;   // BREAKAWAY filmic grade
 renderer.toneMappingExposure = 1.42;                  // bright arcade arena look
 
-// ── Adaptive resolution — hold ~60fps by scaling pixel ratio ──
+// ── Adaptive resolution — hold ~60fps by scaling pixel ratio, with a hard
+// floor and a shadow-disable fallback for hardware that's still too slow.
+const PR_FLOOR = 0.5;
 let perfMs = 0, perfFrames = 0;
 function monitorPerf(rawMs) {
-  if (rawMs > 60) return;            // ignore stalls (tab inactive, GC spikes)
+  // Only discard genuine one-off stalls (tab backgrounded, a GC pause) — not
+  // sustained lag, which is exactly what this system exists to catch. The old
+  // threshold here was 60ms: on hardware slow enough to need this system (any
+  // frame past ~16fps), EVERY frame was discarded, perfFrames never reached
+  // its trigger count, and resolution never adapted — the safety net was
+  // disabled by the exact condition it was built to catch.
+  if (rawMs > 300) return;
   perfMs += rawMs; perfFrames++;
-  if (perfFrames < 40) return;
+  if (perfFrames < 12) return;          // react in ~0.2-3s, not 10-40s at low fps
   const avg = perfMs / perfFrames;
   perfMs = 0; perfFrames = 0;
-  if (avg > 21 && curPR > 0.8) {              // < ~48fps → drop resolution
-    curPR = Math.max(0.8, curPR - 0.1);
+
+  if (avg > 21 && curPR > PR_FLOOR) {                 // < ~48fps → drop resolution
+    curPR = Math.max(PR_FLOOR, curPR - (avg > 60 ? 0.3 : 0.1));  // cut harder when very slow
     renderer.setPixelRatio(curPR);
-  } else if (avg < 14 && curPR < MAX_PR) {    // > ~71fps → restore resolution
+  } else if (avg < 14 && curPR < MAX_PR) {            // > ~71fps → restore resolution
     curPR = Math.min(MAX_PR, curPR + 0.1);
     renderer.setPixelRatio(curPR);
+  }
+
+  // Resolution alone isn't enough — pinned at the floor and still slow means
+  // the bottleneck is a fixed per-frame cost (the shadow pass), not pixel
+  // count. Drop it once, for good; re-enabling on a lucky good window would
+  // just flicker back off again next time play gets busy.
+  if (renderer.shadowMap.enabled && curPR <= PR_FLOOR && avg > 30) {
+    renderer.shadowMap.enabled = false;
   }
 }
 
