@@ -6,6 +6,8 @@ import { mergeStaticBody } from './meshutil.js';
 const GOALIE_SPEED  = 18;
 const SAVE_RANGE    = 5;
 const POST_RANGE    = 3.5;
+const BODY_R        = 1.7;    // physical block radius (pads/stick reach) — always bounces
+const PUCK_R        = 0.45;   // matches puck.js — kept local to avoid a cross-module import
 const REACT_DELAY   = 0.07;
 const SAVE_ANIM     = 0.35;   // butterfly save duration
 const GOALIE_SCALE  = 1.05;   // base mesh scale (matches the skaters)
@@ -253,6 +255,33 @@ export class Goalie {
     // without a cooldown here trySave re-rolls on it, restacking the save anim/sfx
     // every frame until a roll finally misses (harmless to the score, but noisy).
     this.beatCd = SAVE_ANIM;
+    return true;
+  }
+
+  // Hard physical block — always bounces, no RNG. trySave() (above) governs
+  // whether the goalie's positioning/reflexes stop a shot AT RANGE (skill +
+  // difficulty); this governs what happens once the puck is close enough to
+  // actually be touching the goalie's body — you can't skate it through a
+  // person no matter how the save roll went. Also stops the puck ever
+  // rendering clipped inside the goalie mesh on a shot that beat the save roll
+  // but still tracks straight through where the goalie is standing.
+  bodyBlock(puck) {
+    const minD = BODY_R + PUCK_R;
+    const dx = puck.pos.x - this.mesh.position.x, dz = puck.pos.z - this.mesh.position.z;
+    const dist = Math.hypot(dx, dz);
+    if (dist >= minD || dist < 1e-4) return false;
+    const nx = dx / dist, nz = dz / dist;
+    // push the puck out to the body surface so it never renders inside the pads
+    puck.pos.x = this.mesh.position.x + nx * minD;
+    puck.pos.z = this.mesh.position.z + nz * minD;
+    const vn = puck.vel.x * nx + puck.vel.z * nz;   // velocity along the contact normal
+    if (vn < 0) {   // moving INTO the goalie — reflect off the pads with a bit of pop
+      puck.vel.x -= 2 * vn * nx; puck.vel.z -= 2 * vn * nz;
+      puck.vel.multiplyScalar(1.15);
+      this.saveAnim = Math.max(this.saveAnim, SAVE_ANIM * 0.55);   // a small flinch, not a full butterfly
+    } else {   // already grazing past — just nudge it clear, don't fight its direction
+      puck.vel.x += nx * 8; puck.vel.z += nz * 8;
+    }
     return true;
   }
 }

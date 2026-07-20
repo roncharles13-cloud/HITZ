@@ -693,7 +693,9 @@ export class Player {
     }
   }
 
-  check(opponents) {
+  // puck is optional — only BIG (turbo) hits shockwave it, so callers that
+  // never throw big hits (none currently do, but keep it safe) can omit it.
+  check(opponents, puck = null) {
     if (!this.canCheck()) return null;
     const big = this.turboActive;          // turbo check = BIG hit
     for (const opp of opponents) {
@@ -716,6 +718,25 @@ export class Player {
         opp.vel.copy(push);
         const loose = opp.hasPuck;
         if (loose) opp.hasPuck = false;
+
+        // BIG hits shockwave a nearby puck loose too, Hitz-style — either it
+        // was on the checked player's stick (now jarred free) or just sitting
+        // loose close to the collision. Never touches a puck someone else controls.
+        if (big && puck && (!puck.owner || puck.owner === opp)) {
+          const midX = (this.mesh.position.x + opp.mesh.position.x) / 2;
+          const midZ = (this.mesh.position.z + opp.mesh.position.z) / 2;
+          const pdx = puck.pos.x - midX, pdz = puck.pos.z - midZ;
+          const pd = Math.hypot(pdx, pdz);
+          if (pd < 6) {
+            puck.drop();
+            const nx = pd > 1e-4 ? pdx / pd : this.facing.x;
+            const nz = pd > 1e-4 ? pdz / pd : this.facing.z;
+            const kick = 30 + Math.random() * 16;
+            // radiate outward from the impact, carrying a little of the checker's own momentum
+            puck.vel.set(nx * kick + this.facing.x * 10, 0, nz * kick + this.facing.z * 10);
+          }
+        }
+
         return (big ? 'BIG_' : '') + (loose ? 'PUCK_LOOSE' : 'HIT');
       }
     }

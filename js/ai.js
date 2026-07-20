@@ -91,7 +91,7 @@ export class AI {
         const carrier = opponents.find(o => o.hasPuck && !o.knockedOut);
         if (carrier && Math.random() < (diff ? diff.checkChance : 0.008) &&
             p.mesh.position.distanceTo(carrier.mesh.position) < (diff ? diff.checkRange : 4.5)) {
-          p.check([carrier]);
+          p.check([carrier], puck);
         }
       }
     }

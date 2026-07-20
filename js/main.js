@@ -382,7 +382,7 @@ function loop() {
     }
 
     if (P1.check()) {
-      humanPlayer.check([players[2], players[3]]);
+      humanPlayer.check([players[2], players[3]], puck);
     }
 
     // Fire + turbo + shot-power display
@@ -464,9 +464,11 @@ function loop() {
   goalies[0].update(puck, dt);
   goalies[1].update(puck, dt);
 
-  // Goalie saves
+  // Goalie saves — trySave (skill/range roll) first, then bodyBlock (hard
+  // physical collision, always bounces) catches anything close enough to be
+  // touching the goalie regardless of how the roll went.
   if (!puck.owner) {
-    goalies.forEach(g => g.trySave(puck));
+    goalies.forEach(g => { if (!g.trySave(puck)) g.bodyBlock(puck); });
   }
 
   // ── Goal detection ────────────────────────────────────────
@@ -1077,7 +1079,7 @@ if (new URLSearchParams(location.search).has('debug')) {
       resolveCollisions();
       puck.update(dt);
       goalies.forEach(g => g.update(puck, dt));
-      if (!puck.owner) goalies.forEach(g => g.trySave(puck));
+      if (!puck.owner) goalies.forEach(g => { if (!g.trySave(puck)) g.bodyBlock(puck); });
       if (goalCooldown <= 0) checkGoal();
       if (render) renderer.render(scene, camera);
     },
