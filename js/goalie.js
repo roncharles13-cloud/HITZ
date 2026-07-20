@@ -6,8 +6,9 @@ import { mergeStaticBody } from './meshutil.js';
 const GOALIE_SPEED  = 18;
 const SAVE_RANGE    = 5;
 const POST_RANGE    = 3.5;
-const BODY_R        = 1.7;    // physical block radius (pads/stick reach) — always bounces
+const BODY_R        = 1.7;    // physical block radius (pads/stick reach)
 const PUCK_R        = 0.45;   // matches puck.js — kept local to avoid a cross-module import
+const BODY_BLOCK_STOP_CHANCE = 0.55;   // base chance contact actually stops the puck (×saveScale)
 const REACT_DELAY   = 0.07;
 const SAVE_ANIM     = 0.35;   // butterfly save duration
 const GOALIE_SCALE  = 1.05;   // base mesh scale (matches the skaters)
@@ -39,6 +40,7 @@ export class Goalie {
     this.saveAnim   = 0;       // >0 = playing the butterfly save
     this.saved      = false;   // set true the frame a save is made (for audio)
     this.beatCd     = 0;       // >0 = beaten on this shot, can't re-attempt the save
+    this.bodyBlockCd = 0;      // >0 = already rolled a body-contact this shot — one roll per contact, not per frame
     // Difficulty overrides (buildGame weakens the OPPONENT goalie on easy/medium)
     this.saveScale  = 1;
     this.reactDelay = REACT_DELAY;
@@ -227,6 +229,7 @@ export class Goalie {
     // Butterfly save: drop + spread the pads briefly after a save, then recover
     if (this.saveAnim > 0) this.saveAnim -= dt;
     if (this.beatCd  > 0) this.beatCd  -= dt;
+    if (this.bodyBlockCd > 0) this.bodyBlockCd -= dt;
     const k = Math.max(0, this.saveAnim) / SAVE_ANIM, b = GOALIE_SCALE;
     this.mesh.scale.set(b * (1 + 0.22 * k), b * (1 - 0.20 * k), b * (1 + 0.06 * k));
   }
@@ -238,7 +241,7 @@ export class Goalie {
     // Beatable goalie: rockets, corner placement and on-fire shots get through;
     // weak dribblers get eaten. One roll per shot, not per frame.
     const speed = puck.getSpeed();
-    let save = THREE.MathUtils.clamp(1.15 - speed / 110, 0.15, 0.95);
+    let save = THREE.MathUtils.clamp(1.05 - speed / 200, 0.35, 0.95);
     if (Math.abs(puck.pos.z - this.mesh.position.z) > 2) save -= 0.2;   // picked a corner
     if (puck.onFire) save -= 0.25;                                       // fire melts the pads
     save *= this.saveScale;                                              // difficulty (opponent goalie only)
@@ -258,30 +261,49 @@ export class Goalie {
     return true;
   }
 
-  // Hard physical block — always bounces, no RNG. trySave() (above) governs
-  // whether the goalie's positioning/reflexes stop a shot AT RANGE (skill +
-  // difficulty); this governs what happens once the puck is close enough to
-  // actually be touching the goalie's body — you can't skate it through a
-  // person no matter how the save roll went. Also stops the puck ever
-  // rendering clipped inside the goalie mesh on a shot that beat the save roll
-  // but still tracks straight through where the goalie is standing.
+  // Physical contact — ALWAYS repositions the puck to the body surface (it
+  // must never render clipped inside the goalie, no matter what), but whether
+  // contact actually STOPS the puck is a difficulty-scaled roll like trySave().
+  // Point-blank contact isn't an automatic save on lower difficulty — the puck
+  // can still scramble/deflect through, matching a goalie who isn't square to
+  // the shot. This is what lets easy/medium sit meaningfully below hard instead
+  // of being propped up to hard's level by an unconditional 100% block.
   bodyBlock(puck) {
     const minD = BODY_R + PUCK_R;
     const dx = puck.pos.x - this.mesh.position.x, dz = puck.pos.z - this.mesh.position.z;
     const dist = Math.hypot(dx, dz);
     if (dist >= minD || dist < 1e-4) return false;
     const nx = dx / dist, nz = dz / dist;
-    // push the puck out to the body surface so it never renders inside the pads
+    // ALWAYS reposition to the body surface, every frame, regardless of the
+    // cooldown below — the puck must never render clipped inside the pads.
     puck.pos.x = this.mesh.position.x + nx * minD;
     puck.pos.z = this.mesh.position.z + nz * minD;
+
+    // The stop-vs-deflect ROLL, below, is a one-time decision per contact —
+    // without this the puck can linger inside the block radius for several
+    // frames while its deflected velocity carries it clear, and each of
+    // those frames would re-roll independently. Even a modest per-frame
+    // chance compounds toward near-certainty over 3-4 rerolls, which is
+    // exactly why easy/medium were measuring the same as hard before this.
+    if (this.bodyBlockCd > 0) return false;
+
     const vn = puck.vel.x * nx + puck.vel.z * nz;   // velocity along the contact normal
-    if (vn < 0) {   // moving INTO the goalie — reflect off the pads with a bit of pop
-      puck.vel.x -= 2 * vn * nx; puck.vel.z -= 2 * vn * nz;
-      puck.vel.multiplyScalar(1.15);
-      this.saveAnim = Math.max(this.saveAnim, SAVE_ANIM * 0.55);   // a small flinch, not a full butterfly
-    } else {   // already grazing past — just nudge it clear, don't fight its direction
+    if (vn >= 0) {   // already moving away — just a graze, nudge clear, no roll needed
       puck.vel.x += nx * 8; puck.vel.z += nz * 8;
+      return false;
     }
+    this.bodyBlockCd = 0.5;
+    if (Math.random() >= BODY_BLOCK_STOP_CHANCE * this.saveScale) {
+      // deflected, not stopped — glances off at an angle and keeps going
+      const glance = 0.4;
+      puck.vel.x = puck.vel.x * (1 - glance) + nx * 6;
+      puck.vel.z = puck.vel.z * (1 - glance) + nz * 6;
+      return false;
+    }
+    // roll says stop — reflect off the pads with a bit of pop
+    puck.vel.x -= 2 * vn * nx; puck.vel.z -= 2 * vn * nz;
+    puck.vel.multiplyScalar(1.15);
+    this.saveAnim = Math.max(this.saveAnim, SAVE_ANIM * 0.55);   // a small flinch, not a full butterfly
     return true;
   }
 }

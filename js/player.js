@@ -18,11 +18,8 @@ const SHOT_MIN    = 45;    // tap shot — a quick wrister that still threatens
 const SHOT_CHARGE = 35;    // extra speed at full charge (45 + 35 = 80 cap before mults)
 const CHARGE_DRAG = 0.26;  // skating slows up to this fraction while winding a big one
 
-// ── Turbo ──
-const TURBO_MULT     = 1.6;    // top speed multiplier while boosting
-const TURBO_DRAIN    = 0.60;   // meter/sec while boosting
-const TURBO_RECHARGE = 0.26;   // meter/sec while not boosting
-const TURBO_MIN      = 0;      // no floor — any turbo left is usable
+// ── Turbo — unlimited while held (see move()) ──
+const TURBO_MULT = 1.6;    // top speed multiplier while boosting
 // ── Spin-o-rama ──
 const SPIN_DURATION  = 0.3;    // seconds
 const SPIN_COOLDOWN  = 0.8;
@@ -115,7 +112,7 @@ export class Player {
     this.shootCd   = 0;
     this.passCd    = 0;
 
-    this.turbo       = 1;       // 0..1 boost meter
+    this.turbo       = 1;       // always full — HUD bar; turbo has no meter to deplete
     this.turboActive = false;   // boosting this frame
     this.spinTimer   = 0;       // >0 = mid spin-o-rama
     this.spinCd      = 0;
@@ -476,14 +473,9 @@ export class Player {
     const moving   = Math.abs(dx) > 0.1 || Math.abs(dz) > 0.1;
     const spinning = this.spinTimer > 0;
 
-    // Turbo: drain while boosting + moving, otherwise recharge
-    if (turboHeld && this.turbo > TURBO_MIN && moving && !spinning) {
-      this.turboActive = true;
-      this.turbo = Math.max(0, this.turbo - TURBO_DRAIN * dt);
-    } else {
-      this.turboActive = false;
-      this.turbo = Math.min(1, this.turbo + TURBO_RECHARGE * dt);
-    }
+    // Turbo — always available while held, like a modern sports-game sprint
+    // button. No meter, no drain, no recharge: hold the key, you're boosting.
+    this.turboActive = turboHeld && moving && !spinning;
 
     let topSpeed = PLAYER_SPEED * this.spdMult * this.diffMult * (this.hasPuck ? 0.91 : 1.0);
     if (this.turboActive) topSpeed *= TURBO_MULT;

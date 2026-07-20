@@ -10,7 +10,7 @@ const PRESETS = {
     actCd:       0.7,    // seconds between opponent shoot/pass decisions
     passChance:  0.22,
     shootZone:   40,     // opponents only shoot from inside this range
-    saveScale:   0.70,   // opponent goalie save-probability multiplier
+    saveScale:   0.44,   // opponent goalie save-probability multiplier
     reactDelay:  0.16,
     goalieSpeed: 13,
   },
@@ -23,7 +23,7 @@ const PRESETS = {
     actCd:       0.5,    // offense only a tad better than easy
     passChance:  0.30,
     shootZone:   48,
-    saveScale:   0.85,   // goalie play noticeably better
+    saveScale:   0.66,   // goalie play noticeably better
     reactDelay:  0.10,
     goalieSpeed: 16,
   },
